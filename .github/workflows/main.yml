@@ -1,10 +1,9 @@
-name: Build TypeScript Todo APK (Production)
+name: Build Native Webview APK
 
 on:
   workflow_dispatch:
 
 env:
-  # Enforce Node.js 24 runtime for all GitHub Actions
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: false
 
@@ -19,7 +18,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Standardized runtime for React Native CLI
+          node-version: '20'
 
       - name: Set up Java JDK
         uses: actions/setup-java@v4
@@ -30,115 +29,97 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Initialize Modern React Native App (TypeScript Default)
+      - name: Initialize Modern React Native App
         run: |
-          # Init standard modern RN app (TS is built-in). Skip install to handle explicitly.
-          npx @react-native-community/cli@latest init TodoApp --skip-install > rn_init.log 2>&1 || { 
-            cat rn_init.log
-            exit 1 
-          }
+          echo "Initializing App..."
+          npx @react-native-community/cli@latest init WebApp --skip-install > rn_init.log 2>&1 || { cat rn_init.log; exit 1; }
           
-      - name: Install Dependencies
+      - name: Install Dependencies & Webview
         run: |
-          cd TodoApp
-          npm install > npm_install.log 2>&1 || {
-            cat npm_install.log
-            exit 1
-          }
+          cd WebApp
+          npm install > npm_install.log 2>&1 || { cat npm_install.log; exit 1; }
+          npm install react-native-webview > npm_webview.log 2>&1 || { cat npm_webview.log; exit 1; }
 
-      - name: Inject TypeScript Todo Source
+      - name: Inject Production Webview Code
         run: |
-          cd TodoApp
+          cd WebApp
           cat << 'EOF' > App.tsx
-          import React, { useState } from 'react';
-          import { SafeAreaView, View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+          import React, { useRef, useEffect, useState } from 'react';
+          import { SafeAreaView, StatusBar, BackHandler, StyleSheet, ActivityIndicator, View } from 'react-native';
+          import { WebView } from 'react-native-webview';
 
-          interface Todo {
-            id: string;
-            text: string;
-            completed: boolean;
-          }
+          const TARGET_URL = 'https://aistudio.xiaomimimo.com/#/c';
 
           const App = () => {
-            const [todos, setTodos] = useState<Todo[]>([]);
-            const [input, setInput] = useState('');
+            const webViewRef = useRef<WebView>(null);
+            const [canGoBack, setCanGoBack] = useState(false);
 
-            const addTodo = () => {
-              if (input.trim() === '') return;
-              const newTodo: Todo = { id: Date.now().toString(), text: input, completed: false };
-              setTodos([...todos, newTodo]);
-              setInput('');
-            };
+            // Handle Android Hardware Back Button for Native Feel
+            useEffect(() => {
+              const backAction = () => {
+                if (canGoBack && webViewRef.current) {
+                  webViewRef.current.goBack();
+                  return true; // Prevent default behavior (exiting app)
+                }
+                return false; // Exit app if no history
+              };
 
-            const toggleTodo = (id: string) => {
-              setTodos(todos.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
-            };
+              const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+              return () => backHandler.remove();
+            }, [canGoBack]);
 
-            const renderItem = ({ item }: { item: Todo }) => (
-              <TouchableOpacity onPress={() => toggleTodo(item.id)} style={styles.todoItem} activeOpacity={0.7}>
-                <Text style={[styles.todoText, item.completed && styles.completedText]}>{item.text}</Text>
-              </TouchableOpacity>
+            const LoadingIndicatorView = () => (
+              <View style={styles.loaderContainer}>
+                <ActivityIndicator color="#0000ff" size="large" />
+              </View>
             );
 
             return (
               <SafeAreaView style={styles.container}>
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
-                  <Text style={styles.headerTitle}>Task Manager</Text>
-                  
-                  <View style={styles.inputContainer}>
-                    <TextInput
-                      style={styles.input}
-                      value={input}
-                      onChangeText={setInput}
-                      placeholder="Add a new task..."
-                      placeholderTextColor="#888"
-                    />
-                    <TouchableOpacity onPress={addTodo} style={styles.addButton}>
-                      <Text style={styles.addButtonText}>Add</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <FlatList
-                    data={todos}
-                    keyExtractor={item => item.id}
-                    renderItem={renderItem}
-                    contentContainerStyle={styles.listContainer}
-                  />
-                </KeyboardAvoidingView>
+                <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+                <WebView
+                  ref={webViewRef}
+                  source={{ uri: TARGET_URL }}
+                  style={styles.webview}
+                  onNavigationStateChange={(navState) => setCanGoBack(navState.canGoBack)}
+                  renderLoading={LoadingIndicatorView}
+                  startInLoadingState={true}
+                  javaScriptEnabled={true}
+                  domStorageEnabled={true}
+                  bounces={false} // Prevents iOS over-scroll
+                  overScrollMode="never" // Prevents Android over-scroll
+                  pullToRefreshEnabled={true}
+                />
               </SafeAreaView>
             );
           };
 
           const styles = StyleSheet.create({
-            container: { flex: 1, backgroundColor: '#F3F4F6' },
-            headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#111827', textAlign: 'center', marginVertical: 20 },
-            inputContainer: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 20 },
-            input: { flex: 1, borderWidth: 1, borderColor: '#D1D5DB', padding: 12, borderRadius: 8, backgroundColor: '#FFFFFF', color: '#111827' },
-            addButton: { backgroundColor: '#3B82F6', paddingHorizontal: 20, borderRadius: 8, marginLeft: 10, justifyContent: 'center', alignItems: 'center' },
-            addButtonText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 16 },
-            listContainer: { paddingHorizontal: 20 },
-            todoItem: { padding: 16, backgroundColor: '#FFFFFF', borderRadius: 8, marginBottom: 10, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
-            todoText: { fontSize: 16, color: '#1F2937' },
-            completedText: { textDecorationLine: 'line-through', color: '#9CA3AF' }
+            container: { flex: 1, backgroundColor: '#ffffff' },
+            webview: { flex: 1 },
+            loaderContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' }
           });
 
           export default App;
           EOF
 
-      - name: Build Android Debug APK
+      - name: Bundle JavaScript Assets (Fixes "Unable to load script" Error)
         run: |
-          cd TodoApp/android
-          chmod +x gradlew
-          
-          # Build APK explicitly disabling daemon for CI environments
-          ./gradlew assembleDebug -q --console=plain --no-daemon > gradle_build.log 2>&1 || {
-            cat gradle_build.log
-            exit 1
-          }
+          cd WebApp
+          mkdir -p android/app/src/main/assets
+          echo "Bundling JavaScript..."
+          npx react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res > bundle.log 2>&1 || { cat bundle.log; exit 1; }
 
-      - name: Upload APK Artifact
+      - name: Build Android Standalone Debug APK
+        run: |
+          cd WebApp/android
+          chmod +x gradlew
+          echo "Building Standalone APK..."
+          ./gradlew assembleDebug -q --console=plain --no-daemon > gradle_build.log 2>&1 || { cat gradle_build.log; exit 1; }
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TodoApp-Debug-APK
-          path: TodoApp/android/app/build/outputs/apk/debug/app-debug.apk
+          name: Native-Webview-APK
+          path: WebApp/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
