@@ -1,7 +1,11 @@
-name: Build TypeScript Todo APK (Strict Logs)
+name: Build TypeScript Todo APK (Production CI)
 
 on:
   workflow_dispatch:
+
+# Force all JavaScript-based actions to use Node.js 24 to resolve deprecation warnings
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-and-compile:
@@ -14,10 +18,10 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '18' # This is the runtime for React Native, not the GitHub Action runner
 
       - name: Set up Java JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4 # Upgraded to v4 for better modern Node compatibility
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -27,8 +31,7 @@ jobs:
 
       - name: Initialize React Native TypeScript App (Silent Mode)
         run: |
-          echo "Initializing React Native project... (Warnings and standard outputs are suppressed)"
-          # Redirecting output to log file. If command fails, it reads the log file and exits with code 1.
+          echo "Initializing React Native project..."
           npx --yes react-native@latest init TodoApp --template react-native-template-typescript > rn_init.log 2>&1 || { 
             echo "CRITICAL ERROR: React Native Initialization Failed. Dumping logs:"
             cat rn_init.log
@@ -118,10 +121,8 @@ jobs:
         run: |
           cd TodoApp/android
           chmod +x gradlew
-          echo "Building APK... (Warnings and standard outputs are suppressed)"
+          echo "Building APK..."
           
-          # -q (quiet) suppresses everything except ERROR level logs.
-          # --console=plain prevents progress bar garbage characters in CI logs.
           ./gradlew assembleDebug -q --console=plain --no-daemon > gradle_build.log 2>&1 || {
             echo "CRITICAL ERROR: Gradle Build Failed. Dumping logs:"
             cat gradle_build.log
