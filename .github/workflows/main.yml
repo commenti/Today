@@ -1,0 +1,126 @@
+name: Build TypeScript Todo APK
+
+on:
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  build-and-compile:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Set up Java JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Initialize React Native TypeScript App
+        run: |
+          # Bootstrap standard React Native App with TypeScript template
+          npx react-native@latest init TodoApp --template react-native-template-typescript
+
+      - name: Inject TypeScript Todo Application Code
+        run: |
+          cd TodoApp
+          # Overwriting App.tsx with standard Todo List logic
+          cat << 'EOF' > App.tsx
+          import React, { useState } from 'react';
+          import { SafeAreaView, View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+
+          interface Todo {
+            id: string;
+            text: string;
+            completed: boolean;
+          }
+
+          const App = () => {
+            const [todos, setTodos] = useState<Todo[]>([]);
+            const [input, setInput] = useState('');
+
+            const addTodo = () => {
+              if (input.trim() === '') return;
+              const newTodo: Todo = { id: Date.now().toString(), text: input, completed: false };
+              setTodos([...todos, newTodo]);
+              setInput('');
+            };
+
+            const toggleTodo = (id: string) => {
+              setTodos(todos.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+            };
+
+            const renderItem = ({ item }: { item: Todo }) => (
+              <TouchableOpacity onPress={() => toggleTodo(item.id)} style={styles.todoItem} activeOpacity={0.7}>
+                <Text style={[styles.todoText, item.completed && styles.completedText]}>{item.text}</Text>
+              </TouchableOpacity>
+            );
+
+            return (
+              <SafeAreaView style={styles.container}>
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
+                  <Text style={styles.headerTitle}>Task Manager</Text>
+                  
+                  <View style={styles.inputContainer}>
+                    <TextInput
+                      style={styles.input}
+                      value={input}
+                      onChangeText={setInput}
+                      placeholder="Add a new task..."
+                      placeholderTextColor="#888"
+                    />
+                    <TouchableOpacity onPress={addTodo} style={styles.addButton}>
+                      <Text style={styles.addButtonText}>Add</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <FlatList
+                    data={todos}
+                    keyExtractor={item => item.id}
+                    renderItem={renderItem}
+                    contentContainerStyle={styles.listContainer}
+                  />
+                </KeyboardAvoidingView>
+              </SafeAreaView>
+            );
+          };
+
+          const styles = StyleSheet.create({
+            container: { flex: 1, backgroundColor: '#F3F4F6' },
+            headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#111827', textAlign: 'center', marginVertical: 20 },
+            inputContainer: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 20 },
+            input: { flex: 1, borderWidth: 1, borderColor: '#D1D5DB', padding: 12, borderRadius: 8, backgroundColor: '#FFFFFF', color: '#111827' },
+            addButton: { backgroundColor: '#3B82F6', paddingHorizontal: 20, borderRadius: 8, marginLeft: 10, justifyContent: 'center', alignItems: 'center' },
+            addButtonText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 16 },
+            listContainer: { paddingHorizontal: 20 },
+            todoItem: { padding: 16, backgroundColor: '#FFFFFF', borderRadius: 8, marginBottom: 10, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
+            todoText: { fontSize: 16, color: '#1F2937' },
+            completedText: { textDecorationLine: 'line-through', color: '#9CA3AF' }
+          });
+
+          export default App;
+          EOF
+
+      - name: Build Android Debug APK
+        run: |
+          cd TodoApp/android
+          chmod +x gradlew
+          # Assembling debug build as release builds require explicit keystore signing configurations
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TodoApp-Debug-APK
+          path: TodoApp/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+
