@@ -1,7 +1,7 @@
-name: Build TypeScript Todo APK
+name: Build TypeScript Todo APK (Strict Logs)
 
 on:
-  workflow_dispatch: # Allows manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   build-and-compile:
@@ -25,15 +25,19 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Initialize React Native TypeScript App
+      - name: Initialize React Native TypeScript App (Silent Mode)
         run: |
-          # Bootstrap standard React Native App with TypeScript template
-          npx react-native@latest init TodoApp --template react-native-template-typescript
+          echo "Initializing React Native project... (Warnings and standard outputs are suppressed)"
+          # Redirecting output to log file. If command fails, it reads the log file and exits with code 1.
+          npx --yes react-native@latest init TodoApp --template react-native-template-typescript > rn_init.log 2>&1 || { 
+            echo "CRITICAL ERROR: React Native Initialization Failed. Dumping logs:"
+            cat rn_init.log
+            exit 1 
+          }
 
       - name: Inject TypeScript Todo Application Code
         run: |
           cd TodoApp
-          # Overwriting App.tsx with standard Todo List logic
           cat << 'EOF' > App.tsx
           import React, { useState } from 'react';
           import { SafeAreaView, View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
@@ -110,12 +114,19 @@ jobs:
           export default App;
           EOF
 
-      - name: Build Android Debug APK
+      - name: Build Android Debug APK (Strict Logs)
         run: |
           cd TodoApp/android
           chmod +x gradlew
-          # Assembling debug build as release builds require explicit keystore signing configurations
-          ./gradlew assembleDebug --no-daemon
+          echo "Building APK... (Warnings and standard outputs are suppressed)"
+          
+          # -q (quiet) suppresses everything except ERROR level logs.
+          # --console=plain prevents progress bar garbage characters in CI logs.
+          ./gradlew assembleDebug -q --console=plain --no-daemon > gradle_build.log 2>&1 || {
+            echo "CRITICAL ERROR: Gradle Build Failed. Dumping logs:"
+            cat gradle_build.log
+            exit 1
+          }
 
       - name: Upload APK as Artifact
         uses: actions/upload-artifact@v4
