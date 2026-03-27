@@ -1,11 +1,12 @@
-name: Build TypeScript Todo APK (Production CI)
+name: Build TypeScript Todo APK (Production)
 
 on:
   workflow_dispatch:
 
-# Force all JavaScript-based actions to use Node.js 24 to resolve deprecation warnings
 env:
+  # Enforce Node.js 24 runtime for all GitHub Actions
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: false
 
 jobs:
   build-and-compile:
@@ -18,10 +19,10 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18' # This is the runtime for React Native, not the GitHub Action runner
+          node-version: '20' # Standardized runtime for React Native CLI
 
       - name: Set up Java JDK
-        uses: actions/setup-java@v4 # Upgraded to v4 for better modern Node compatibility
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -29,16 +30,23 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Initialize React Native TypeScript App (Silent Mode)
+      - name: Initialize Modern React Native App (TypeScript Default)
         run: |
-          echo "Initializing React Native project..."
-          npx --yes react-native@latest init TodoApp --template react-native-template-typescript > rn_init.log 2>&1 || { 
-            echo "CRITICAL ERROR: React Native Initialization Failed. Dumping logs:"
+          # Init standard modern RN app (TS is built-in). Skip install to handle explicitly.
+          npx @react-native-community/cli@latest init TodoApp --skip-install > rn_init.log 2>&1 || { 
             cat rn_init.log
             exit 1 
           }
+          
+      - name: Install Dependencies
+        run: |
+          cd TodoApp
+          npm install > npm_install.log 2>&1 || {
+            cat npm_install.log
+            exit 1
+          }
 
-      - name: Inject TypeScript Todo Application Code
+      - name: Inject TypeScript Todo Source
         run: |
           cd TodoApp
           cat << 'EOF' > App.tsx
@@ -117,22 +125,20 @@ jobs:
           export default App;
           EOF
 
-      - name: Build Android Debug APK (Strict Logs)
+      - name: Build Android Debug APK
         run: |
           cd TodoApp/android
           chmod +x gradlew
-          echo "Building APK..."
           
+          # Build APK explicitly disabling daemon for CI environments
           ./gradlew assembleDebug -q --console=plain --no-daemon > gradle_build.log 2>&1 || {
-            echo "CRITICAL ERROR: Gradle Build Failed. Dumping logs:"
             cat gradle_build.log
             exit 1
           }
 
-      - name: Upload APK as Artifact
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: TodoApp-Debug-APK
           path: TodoApp/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
-
