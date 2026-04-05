@@ -48,7 +48,7 @@ jobs:
           import { SafeAreaView, StatusBar, BackHandler, StyleSheet, ActivityIndicator, View } from 'react-native';
           import { WebView } from 'react-native-webview';
 
-          const TARGET_URL = 'https://aistudio.xiaomimimo.com/#/c';
+          const TARGET_URL = 'https://chat.z.ai/#/c';
 
           const App = () => {
             const webViewRef = useRef<WebView>(null);
